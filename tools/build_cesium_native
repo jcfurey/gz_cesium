@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Build the pinned Cesium dependency without changing the system ROS/Gazebo ABI.
+set -eo pipefail
+cesium_repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cesium_revision=55d288611b3dd6e1acf865d030f1e9a792be1514
+cesium_runtime="${GZ_CESIUM_NATIVE_ROOT:-$cesium_repository/.deps/cesium}"
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  echo 'Usage: tools/build_cesium_native [parallel jobs, default 8]'
+  echo 'Downloads and builds pinned Apache-2.0 Cesium Native under .deps/cesium (or GZ_CESIUM_NATIVE_ROOT).'
+  exit 0
+fi
+mkdir -p "$cesium_runtime"
+touch "$cesium_runtime/COLCON_IGNORE"
+exec 9>"$cesium_runtime/build.lock"
+flock -n 9 || { echo 'A Cesium dependency build is already running.' >&2; exit 2; }
+if [[ ! -d "$cesium_runtime/native/.git" ]]; then
+  git clone --no-checkout --filter=blob:none https://github.com/CesiumGS/cesium-native.git "$cesium_runtime/native"
+  git -C "$cesium_runtime/native" checkout --detach "$cesium_revision"
+fi
+if [[ "$(git -C "$cesium_runtime/native" rev-parse HEAD)" != "$cesium_revision" ]] ||
+    [[ -n "$(git -C "$cesium_runtime/native" status --porcelain --untracked-files=no)" ]]; then
+  echo "Expected unmodified Cesium Native at $cesium_revision: $cesium_runtime/native" >&2
+  exit 2
+fi
+export EZVCPKG_BASEDIR="$cesium_runtime/vcpkg"
+export VCPKG_MAX_CONCURRENCY="${1:-8}"
+export VCPKG_BINARY_SOURCES="clear;files,$cesium_runtime/binary-cache,readwrite"
+cmake -S "$cesium_runtime/native" -B "$cesium_runtime/build" -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$cesium_runtime/install" \
+  -DCESIUM_TESTS_ENABLED=OFF -DCESIUM_ENABLE_CLANG_TIDY=OFF -DCESIUM_DISABLE_SPZ=ON
+cmake --build "$cesium_runtime/build" --parallel "${1:-8}"
+cmake --install "$cesium_runtime/build"
+printf '%s\n' "$cesium_revision" > "$cesium_runtime/install/REVISION"

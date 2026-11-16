@@ -1,0 +1,3 @@
+Authored synthetic test geometry and checkerboard texture.
+CC0-1.0. No Cesium ion, Google, or other third-party terrain data is included.
+Regenerate with: python3 tools/generate_cesium_fixture.py
