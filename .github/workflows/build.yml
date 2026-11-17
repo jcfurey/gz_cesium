@@ -23,7 +23,8 @@ jobs:
           sudo apt-get install -y ninja-build curl zip unzip pkg-config autoconf automake libtool python3-pil \
             ros-lyrical-ament-cmake ros-lyrical-ament-cmake-gtest \
             ros-lyrical-gz-sim-vendor ros-lyrical-gz-common-vendor ros-lyrical-gz-plugin-vendor \
-            ros-lyrical-gz-transport-vendor ros-lyrical-gz-msgs-vendor
+            ros-lyrical-gz-transport-vendor ros-lyrical-gz-msgs-vendor \
+            ros-lyrical-gz-rendering-vendor ros-lyrical-gz-gui-vendor qt6-base-dev qt6-declarative-dev
       - name: Cache pinned native dependency
         uses: actions/cache@v5
         with:

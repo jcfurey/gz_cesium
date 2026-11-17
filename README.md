@@ -149,6 +149,58 @@ tile directory). It includes readiness, load progress, active/pinned tiles,
 local geometry paths/counts, credits and preparation errors. Native diagnostics
 redact authentication query values and JWTs.
 
+## Streaming illumination
+
+The example worlds enable Ogre2 voxel cone tracing in the camera renderer and
+Gazebo GUI. Both use `gz_cesium`'s render-thread controller: 128 × 128 × 64
+voxels, one indirect bounce, anisotropic filtering and six cones. The scene's
+ambient fill is reduced to `.18 .20 .24`, retaining the directional sun.
+The GUI's **Indirect lighting** checkbox changes the sensor and GUI settings
+together within their Gazebo partition. The transport services are
+`/cesium/lighting/get_enabled` (Empty → Boolean) and
+`/cesium/lighting/set_enabled` (Boolean → Boolean acknowledgement).
+
+Gazebo's built-in sensor GI builds its voxel field once. Streamed geometry
+requires later refreshes. The controller tracks visual identities and static
+poses, so replacing tiles with the same total count also invalidates lighting.
+It waits for 0.5 seconds of quiet, limits rebuilds to once every two seconds,
+and refreshes within four seconds during continuous streaming. Unchanged
+geometry does not trigger rebuilds. Lighting resources are released on the
+rendering thread during shutdown.
+
+Gazebo currently places SDF-static meshes in Ogre's dynamic render bucket.
+The controller explicitly promotes the adapter's `cesium_tile_` hierarchy to
+static render geometry; reserve that name prefix for stationary terrain.
+Moving robots receive indirect light and keep direct shadows, while remaining
+outside the static bounce volume. Unlit source textures retain their baked
+appearance; their trees and buildings still cast shadows onto live objects.
+
+World settings are applied to both renderers by the same helper:
+
+```bash
+python3 tools/configure_lighting.py worlds/caltech.world --resolution 128 128 64 --bounces 1
+```
+
+The `gz_cesium_lighting_system` and `CesiumLighting` GUI plugins accept
+`enabled`, `resolution`, `bounce_count`, `rebuild_interval` and `settle_time`.
+Resolution axes must be powers of two from 16 to 256; bounce count is 0–4.
+`GZ_CESIUM_GI=off` selects a comparison baseline at startup. Sensor status is
+written beside the native status as `<status-file>.lighting.json`; GUI status
+can be written with `GZ_CESIUM_GUI_LIGHTING_STATUS_FILE`. Status includes
+active state, geometry/built signatures, contributing visuals, rebuild counts
+and timings.
+
+The Caltech diagnostic measured indirect red radiance on a shaded neutral
+receiver, checked replacement/removal refresh, and verified no repeated builds
+in a settled scene. The GUI voxelized all 220 terrain primitives; its enable
+state followed the sensor renderer in both directions. The shared VCT field
+covers active geometry, so widely separated fleets reduce its spatial detail.
+Source imagery contains baked illumination and lacks calibrated radiance or
+intrinsic albedo: this improves robot/environment lighting without recovering
+the original capture lighting or providing physically calibrated day/night
+relighting. See the [Gazebo GI documentation](https://gazebosim.org/api/sim/10/global_illumination.html)
+for the underlying techniques.
+
 ## Validation and limits
 
 Nine C++ tests cover ENU/node/up-axis transforms, portable textures,

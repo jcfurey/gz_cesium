@@ -32,7 +32,9 @@ sdf::Model tileModel(const TileMesh& mesh) {
     sdf::Visual visual;
     visual.SetName("visual_"+std::to_string(i));
     visual.SetGeom(geometry(source.uri));
-    visual.SetCastShadows(!source.unlit);
+    // Baked photogrammetry stays emissive, but its geometry must still block
+    // direct sunlight onto live robots and other normally lit objects.
+    visual.SetCastShadows(true);
     sdf::Material material;
     const auto color = gz::math::Color(source.color.x, source.color.y, source.color.z, source.color.w);
     material.SetDoubleSided(source.doubleSided);

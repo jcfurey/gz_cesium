@@ -1,32 +1,74 @@
-<?xml version="1.0"?>
+<?xml version='1.0' encoding='utf-8'?>
 <sdf version="1.10">
   <world name="cesium_local">
     <physics name="physics" type="ignored">
-      <max_step_size>0.004</max_step_size><real_time_factor>1</real_time_factor>
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1</real_time_factor>
     </physics>
     <gravity>0 0 -9.80665</gravity>
     <spherical_coordinates>
-      <surface_model>EARTH_WGS84</surface_model><world_frame_orientation>ENU</world_frame_orientation>
-      <latitude_deg>32.3645</latitude_deg><longitude_deg>-90.8431</longitude_deg><elevation>100</elevation>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>32.3645</latitude_deg>
+      <longitude_deg>-90.8431</longitude_deg>
+      <elevation>100</elevation>
     </spherical_coordinates>
-    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
-    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
-    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
-    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors"><render_engine>ogre2</render_engine></plugin>
-    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
     <plugin filename="gz_cesium_system" name="gz_cesium::CesiumSystem">
       <tileset_url>fixtures/tileset.json</tileset_url>
-      <latitude>32.3645</latitude><longitude>-90.8431</longitude><height>100</height>
+      <latitude>32.3645</latitude>
+      <longitude>-90.8431</longitude>
+      <height>100</height>
       <maximum_screen_space_error>4</maximum_screen_space_error>
       <maximum_simultaneous_tile_loads>4</maximum_simultaneous_tile_loads>
       <maximum_cached_bytes>67108864</maximum_cached_bytes>
       <contact_radius>15</contact_radius>
-      <wait_for_terrain>true</wait_for_terrain><place_on_ground>true</place_on_ground>
+      <wait_for_terrain>true</wait_for_terrain>
+      <place_on_ground>true</place_on_ground>
     </plugin>
-    <scene><ambient>.6 .6 .6 1</ambient><background>.65 .75 .9 1</background><shadows>true</shadows></scene>
+    <scene>
+      <ambient>.18 .20 .24 1</ambient>
+      <background>.65 .75 .9 1</background>
+      <shadows>true</shadows>
+    </scene>
     <light name="sun" type="directional">
-      <pose>0 0 100 0 0 0</pose><diffuse>.9 .9 .9 1</diffuse><specular>.1 .1 .1 1</specular>
-      <direction>-.4 -.3 -1</direction><cast_shadows>true</cast_shadows>
+      <pose>0 0 100 0 0 0</pose>
+      <diffuse>.9 .9 .9 1</diffuse>
+      <specular>.1 .1 .1 1</specular>
+      <direction>-.4 -.3 -1</direction>
+      <cast_shadows>true</cast_shadows>
     </light>
+    <plugin filename="gz_cesium_lighting_system" name="gz_cesium::LightingSystem">
+      <enabled>true</enabled>
+      <resolution>128 128 64</resolution>
+      <bounce_count>1</bounce_count>
+      <rebuild_interval>2.0</rebuild_interval>
+      <settle_time>0.5</settle_time>
+    </plugin>
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <engine>ogre2</engine>
+        <camera_pose>0 -45 30 0 .6 1.57079632679</camera_pose>
+        <ambient_light>.18 .20 .24 1</ambient_light>
+        <background_color>.65 .75 .9 1</background_color>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager" />
+      <plugin filename="InteractiveViewControl" name="View controls" />
+      <plugin filename="WorldControl" name="World controls" />
+      <plugin filename="WorldStats" name="World statistics" />
+      <plugin filename="CesiumLighting" name="Lighting">
+        <enabled>true</enabled>
+        <resolution>128 128 64</resolution>
+        <bounce_count>1</bounce_count>
+        <rebuild_interval>2.0</rebuild_interval>
+        <settle_time>0.5</settle_time>
+      </plugin>
+    </gui>
   </world>
 </sdf>

@@ -34,7 +34,7 @@
       <stream_radius>150</stream_radius>
     </plugin>
     <scene>
-      <ambient>.6 .6 .6 1</ambient>
+      <ambient>.18 .20 .24 1</ambient>
       <background>.65 .75 .9 1</background>
       <shadows>true</shadows>
     </scene>
@@ -45,5 +45,31 @@
       <direction>-.4 -.3 -1</direction>
       <cast_shadows>true</cast_shadows>
     </light>
+    <plugin filename="gz_cesium_lighting_system" name="gz_cesium::LightingSystem">
+      <enabled>true</enabled>
+      <resolution>128 128 64</resolution>
+      <bounce_count>1</bounce_count>
+      <rebuild_interval>2.0</rebuild_interval>
+      <settle_time>0.5</settle_time>
+    </plugin>
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <engine>ogre2</engine>
+        <camera_pose>0 -45 30 0 .6 1.57079632679</camera_pose>
+        <ambient_light>.18 .20 .24 1</ambient_light>
+        <background_color>.65 .75 .9 1</background_color>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager" />
+      <plugin filename="InteractiveViewControl" name="View controls" />
+      <plugin filename="WorldControl" name="World controls" />
+      <plugin filename="WorldStats" name="World statistics" />
+      <plugin filename="CesiumLighting" name="Lighting">
+        <enabled>true</enabled>
+        <resolution>128 128 64</resolution>
+        <bounce_count>1</bounce_count>
+        <rebuild_interval>2.0</rebuild_interval>
+        <settle_time>0.5</settle_time>
+      </plugin>
+    </gui>
   </world>
 </sdf>

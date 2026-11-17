@@ -136,7 +136,7 @@ TEST_F(MeshTest, UnlitTexturesUseEmissionWhilePhysicsKeepsTheSameTriangles) {
   EXPECT_EQ(link->CollisionByIndex(0)->Geom()->MeshShape()->Uri(), mesh->uri.string());
   const auto* visual = link->VisualByIndex(0);
   EXPECT_EQ(visual->Geom()->MeshShape()->Uri(), mesh->visuals[0].uri.string());
-  EXPECT_FALSE(visual->CastShadows());
+  EXPECT_TRUE(visual->CastShadows());
   const auto* material = visual->Material();
   ASSERT_NE(material, nullptr);
   EXPECT_TRUE(material->DoubleSided());
