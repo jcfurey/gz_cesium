@@ -86,8 +86,30 @@ rviz2 -d "$(ros2 pkg prefix gz_cesium)/share/gz_cesium/config/cesium.rviz"
 The publisher mirrors active mesh resources onto `/cesium/tiles`, removes
 retired markers, and preserves source credits as visible text and on
 `/cesium/credits`. Use this view to display the native source attributions;
-a Gazebo GUI attribution overlay is not implemented yet. Meshes use temporary
-local file URIs, so RViz and Gazebo currently need the same filesystem.
+a Gazebo GUI attribution overlay is not implemented yet. Local mode uses
+temporary file URIs. For a viewer on another machine, run the asset service
+beside Gazebo and the marker publisher beside RViz:
+
+```bash
+# Simulator host; optionally include --session /path/to/prepared/fleet
+# to export rewritten robot descriptions and their optimized meshes as well.
+ros2 run gz_cesium serve_assets.py --status "$GZ_CESIUM_STATUS_FILE" --bind 0.0.0.0 --port 8899
+# Viewer host, with a reachable DDS configuration/domain for live robots:
+ros2 run gz_cesium cesium_markers.py --remote http://SIMULATOR:8899 \
+  --cache-dir "$HOME/.cache/gz_cesium"
+```
+
+The service exports only referenced assets, with content hashes, gzip and ETags;
+it does not export source credentials or proxy provider requests. The viewer
+verifies downloads, retains its last good scene during connection errors, and
+reuses unchanged files after reconnecting. The server/client cache targets are
+64/256 MiB; active resources are retained even if they exceed those targets.
+The default viewer textures are capped at 512 pixels with opaque atlases encoded
+as JPEG quality 90; use `serve_assets.py --texture-size 0` for original textures.
+This affects viewer copies only. Geometry and simulator source assets are
+preserved. Bind to a trusted interface or use an SSH tunnel; this small asset
+service provides no authentication. Live ROS topics still use DDS separately.
+
 The `--watch-pid PID` option exits the publisher when an owning viewer exits.
 
 ## Plugin configuration
@@ -126,14 +148,23 @@ redact authentication query values and JWTs.
 
 ## Validation and limits
 
-Five C++ mesh tests cover ENU/node/up-axis transforms, portable textures,
-resource-name isolation, reflected winding, malformed indices and empty tile
-hierarchies. The Caltech fleet passed driving, braking, terrain contact,
+Six C++ mesh tests cover ENU/node/up-axis transforms, portable textures,
+resource-name isolation, reflected winding, malformed indices, empty tile
+hierarchies and unlit material export. Seven HTTP tests cover separate caches,
+warm reuse, corrupt-transfer retries, reconnection, resource restrictions,
+eviction and texture conversion. `tools/ci` builds the pinned dependency and
+configures, builds, installs and tests a fresh package build; the GitHub Actions
+workflow uses Ubuntu 26.04, ROS Lyrical and Gazebo Jetty.
+
+The Caltech fleet passed driving, braking, terrain contact,
 cameras, Ouster metadata/packets/clouds and 3D TF checks with about 416,000
 active triangles. This is a short local validation, not an endurance test.
 
-The adapter handles triangle glTF content and base-color textures. Gazebo
-adds lighting; exact `KHR_materials_unlit` photometry is not preserved yet.
+The adapter handles triangle glTF content and base-color textures. Materials
+marked `KHR_materials_unlit` use emissive texture maps with zero lit diffuse,
+preserving the source photogrammetry without darkening it under Gazebo lighting.
+Ordinary materials keep PBR lighting. Each primitive retains its material and
+the combined collision mesh uses the same triangles.
 Raster overlays, Gaussian splats, animation and advanced material extensions
 are not implemented. Photogrammetry can have coarse or missing surfaces under
 foliage and around narrow passages; inspect the source before placing robots.

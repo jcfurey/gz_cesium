@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "gz_cesium/mesh.hpp"
+#include "gz_cesium/model.hpp"
+#include <CesiumGltf/ExtensionKhrMaterialsUnlit.h>
+#include <sdf/Collision.hh>
+#include <sdf/Geometry.hh>
+#include <sdf/Link.hh>
+#include <sdf/Material.hh>
+#include <sdf/Mesh.hh>
+#include <sdf/Pbr.hh>
+#include <sdf/Visual.hh>
 #include <CesiumGltfReader/GltfReader.h>
 #include <gz/common/Mesh.hh>
 #include <gz/common/MeshManager.hh>
@@ -106,5 +115,44 @@ TEST_F(MeshTest, CorruptIndicesAreRejectedBeforePhysicsUsesThem) {
 TEST_F(MeshTest, EmptyHierarchyContentDoesNotFailTerrainLoading) {
   CesiumGltf::Model empty;
   EXPECT_EQ(gz_cesium::prepareMesh(empty, glm::dmat4(1), glm::dmat4(1), directory, 4), nullptr);
+}
+
+TEST_F(MeshTest, UnlitTexturesUseEmissionWhilePhysicsKeepsTheSameTriangles) {
+  auto source = fixture();
+  ASSERT_FALSE(source.materials.empty());
+  source.materials[0].addExtension<CesiumGltf::ExtensionKhrMaterialsUnlit>();
+  source.materials[0].doubleSided = true;
+  const auto origin = gz_cesium::enuToEcef(32.3645, -90.8431, 100.);
+  const auto mesh = gz_cesium::prepareMesh(source, origin, glm::inverse(origin), directory, 8);
+  ASSERT_EQ(mesh->visuals.size(), 1u);
+  EXPECT_TRUE(mesh->visuals[0].unlit);
+  EXPECT_GT(mesh->exportedBytes, 0u);
+  EXPECT_GT(mesh->textureBytes, 0u);
+  const auto model = gz_cesium::tileModel(*mesh);
+  const auto* link = model.LinkByIndex(0);
+  ASSERT_NE(link, nullptr);
+  ASSERT_EQ(link->CollisionCount(), 1u);
+  ASSERT_EQ(link->VisualCount(), 1u);
+  EXPECT_EQ(link->CollisionByIndex(0)->Geom()->MeshShape()->Uri(), mesh->uri.string());
+  const auto* visual = link->VisualByIndex(0);
+  EXPECT_EQ(visual->Geom()->MeshShape()->Uri(), mesh->visuals[0].uri.string());
+  EXPECT_FALSE(visual->CastShadows());
+  const auto* material = visual->Material();
+  ASSERT_NE(material, nullptr);
+  EXPECT_TRUE(material->DoubleSided());
+  EXPECT_FLOAT_EQ(material->Diffuse().R(), 0.f);
+  EXPECT_GT(material->Emissive().R(), 0.f);
+  const auto* workflow = material->PbrMaterial()->Workflow(sdf::PbrWorkflowType::METAL);
+  ASSERT_NE(workflow, nullptr);
+  EXPECT_EQ(workflow->EmissiveMap(), mesh->visuals[0].texture.string());
+  const auto* full = gz::common::MeshManager::Instance()->Load(mesh->uri.string());
+  const auto* part = gz::common::MeshManager::Instance()->Load(mesh->visuals[0].uri.string());
+  ASSERT_NE(full, nullptr);
+  ASSERT_NE(part, nullptr);
+  EXPECT_EQ(full->IndexCount(), part->IndexCount());
+  EXPECT_EQ(full->Min(), part->Min());
+  EXPECT_EQ(full->Max(), part->Max());
+  gz::common::MeshManager::Instance()->RemoveMesh(mesh->uri.string());
+  gz::common::MeshManager::Instance()->RemoveMesh(mesh->visuals[0].uri.string());
 }
 }  // namespace

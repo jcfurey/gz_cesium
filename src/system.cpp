@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "gz_cesium/mesh.hpp"
+#include "gz_cesium/model.hpp"
 #include "gz_cesium/task_pool.hpp"
 #include "gz_cesium/credentials.hpp"
 
@@ -122,6 +123,8 @@ class Resources final : public cs::IPrepareRendererResources {
       // Entity deletion and the renderer have had several frames to release
       // this geometry before its URI and the server's CPU cache are retired.
       gz::common::MeshManager::Instance()->RemoveMesh(entry.mesh->uri.string());
+      for (const auto& visual : entry.mesh->visuals)
+        gz::common::MeshManager::Instance()->RemoveMesh(visual.uri.string());
       std::error_code error;
       std::filesystem::remove_all(entry.mesh->directory, error);
       return true;
@@ -443,25 +446,7 @@ class CesiumSystem final : public gz::sim::System,
     return highest;
   }
   gz::sim::Entity createTile(const TileMesh& mesh) {
-    sdf::Mesh shape;
-    shape.SetUri(mesh.uri.string());
-    sdf::Geometry geometry;
-    geometry.SetType(sdf::GeometryType::MESH);
-    geometry.SetMeshShape(shape);
-    sdf::Visual visual;
-    visual.SetName("visual");
-    visual.SetGeom(geometry);
-    sdf::Collision collision;
-    collision.SetName("collision");
-    collision.SetGeom(geometry);
-    sdf::Link link;
-    link.SetName("terrain");
-    link.AddVisual(visual);
-    link.AddCollision(collision);
-    sdf::Model model;
-    model.SetName("cesium_tile_"+std::to_string(mesh.id));
-    model.SetStatic(true);
-    model.AddLink(link);
+    const auto model = tileModel(mesh);
     const auto entity = creator_->CreateEntities(&model);
     creator_->SetParent(entity, world_);
     return entity;
@@ -482,6 +467,17 @@ class CesiumSystem final : public gz::sim::System,
     out.Key("stream_radius"); out.Double(range_ ? range_->radius : 0.);
     out.Key("layers"); out.Uint64(tilesets_.size());
     out.Key("preparation_failures"); out.Uint(resources_ ? unsigned(resources_->failures) : 0);
+    std::uint64_t triangles=0, textures=0, exported=0, unlit=0;
+    for (const auto& [pointer, record] : active_) {
+      triangles += record.mesh->triangles.size();
+      textures += record.mesh->textureBytes;
+      exported += record.mesh->exportedBytes;
+      for (const auto& visual : record.mesh->visuals) unlit += visual.unlit;
+    }
+    out.Key("active_triangles"); out.Uint64(triangles);
+    out.Key("active_texture_bytes"); out.Uint64(textures);
+    out.Key("active_exported_bytes"); out.Uint64(exported);
+    out.Key("unlit_primitives"); out.Uint64(unlit);
     out.Key("geometry"); out.StartArray();
     for (const auto& [pointer, record] : active_) {
       out.StartObject();
@@ -490,6 +486,14 @@ class CesiumSystem final : public gz::sim::System,
       out.Key("triangles"); out.Uint64(record.mesh->triangles.size());
       out.Key("textures"); out.Uint64(record.mesh->textureCount);
       out.Key("uri"); out.String(record.mesh->uri.c_str());
+      out.Key("visuals"); out.StartArray();
+      for (const auto& visual : record.mesh->visuals) {
+        out.StartObject();
+        out.Key("uri"); out.String(visual.uri.c_str());
+        out.Key("unlit"); out.Bool(visual.unlit);
+        out.EndObject();
+      }
+      out.EndArray();
       out.Key("pinned"); out.Bool(pins_.contains(pointer));
       out.Key("geometric_error"); out.Double(std::isfinite(pointer->getGeometricError()) ? pointer->getGeometricError() : -1.);
       out.Key("children"); out.Uint64(pointer->getChildren().size());

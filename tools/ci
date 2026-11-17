@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# The same clean package configure/build/tests used by GitHub Actions.
+set -eo pipefail
+cesium_repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+export GZ_CESIUM_NATIVE_ROOT="${GZ_CESIUM_NATIVE_ROOT:-$cesium_repository/.deps/cesium}"
+cesium_ci_build="${GZ_CESIUM_CI_BUILD_ROOT:-$cesium_repository/.ci-build}"
+cesium_jobs="${GZ_CESIUM_BUILD_JOBS:-2}"
+"$cesium_repository/tools/build_cesium_native" "$cesium_jobs"
+cmake -S "$cesium_repository" -B "$cesium_ci_build" -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+  -DCMAKE_INSTALL_PREFIX="$cesium_ci_build/install"
+cmake --build "$cesium_ci_build" --parallel "$cesium_jobs"
+cmake --install "$cesium_ci_build"
+ctest --test-dir "$cesium_ci_build" --output-on-failure

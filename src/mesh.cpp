@@ -6,6 +6,7 @@
 #include <CesiumGltf/AccessorUtility.h>
 #include <CesiumGltf/AccessorView.h>
 #include <CesiumGltf/ExtensionKhrTextureBasisu.h>
+#include <CesiumGltf/ExtensionKhrMaterialsUnlit.h>
 #include <CesiumGltfContent/GltfUtilities.h>
 #include <CesiumImage/ImageAsset.h>
 #include <gz/common/ColladaExporter.hh>
@@ -99,7 +100,11 @@ std::shared_ptr<TileMesh> prepareMesh(const CesiumGltf::Model& model,
     auto material = std::make_shared<gz::common::Material>();
     const auto& sourceMaterial = CesiumGltf::Model::getSafe(gltf.materials, primitive.material);
     const auto& pbr = sourceMaterial.pbrMetallicRoughness;
-    gz::math::Color color(.65, .65, .65, 1.);
+    TileVisual visual;
+    visual.unlit = sourceMaterial.getExtension<CesiumGltf::ExtensionKhrMaterialsUnlit>() != nullptr;
+    visual.doubleSided = sourceMaterial.doubleSided;
+    if (pbr) { visual.metallic = pbr->metallicFactor; visual.roughness = pbr->roughnessFactor; }
+    gz::math::Color color(1., 1., 1., 1.);
     int uvSet = 0;
     if (pbr) {
       const auto& factor = pbr->baseColorFactor;
@@ -139,6 +144,8 @@ std::shared_ptr<TileMesh> prepareMesh(const CesiumGltf::Model& model,
                "_texture_" + std::to_string(mesh.SubMeshCount()) + ".png");
           output.SavePNG(path.string());
           material->SetTextureImage(path.string());
+          visual.texture = path;
+          result->textureBytes += rgba.size();
           ++result->textureCount;
         }
       }
@@ -147,6 +154,7 @@ std::shared_ptr<TileMesh> prepareMesh(const CesiumGltf::Model& model,
     material->SetAmbient(color);
     material->SetSpecular(gz::math::Color(0, 0, 0, 1));
     material->SetTransparency(1.-color.A());
+    visual.color = {color.R(), color.G(), color.B(), color.A()};
     auto submesh = std::make_unique<gz::common::SubMesh>();
     submesh->SetName("primitive_" + std::to_string(mesh.SubMeshCount()));
     submesh->SetPrimitiveType(gz::common::SubMesh::TRIANGLES);
@@ -178,6 +186,33 @@ std::shared_ptr<TileMesh> prepareMesh(const CesiumGltf::Model& model,
     for (std::size_t i = 0; i < indices.size(); i += 3)
       result->triangles.push_back({base+indices[i], base+indices[i+1], base+indices[i+2]});
     if (submesh->NormalCount() != submesh->VertexCount()) submesh->RecalculateNormals();
+    // SDF material overrides apply to a whole visual. Export one mesh per
+    // primitive so different source materials retain independent unlit/PBR
+    // settings in both the sensor renderer and an external Gazebo GUI.
+    gz::common::Mesh part;
+    part.SetName("cesium_part_"+std::to_string(id)+"_"+std::to_string(mesh.SubMeshCount()));
+    auto copy = std::make_unique<gz::common::SubMesh>();
+    copy->SetName("primitive");
+    copy->SetPrimitiveType(gz::common::SubMesh::TRIANGLES);
+    copy->SetMaterialIndex(part.AddMaterial(material));
+    for (unsigned i=0; i<submesh->VertexCount(); ++i) {
+      const auto point = submesh->Vertex(i);
+      copy->AddVertex(point.X(), point.Y(), point.Z());
+      const auto normal = submesh->Normal(i);
+      copy->AddNormal(normal.X(), normal.Y(), normal.Z());
+      if (i<submesh->TexCoordCount()) {
+        const auto uv = submesh->TexCoord(i);
+        copy->AddTexCoord(uv.X(), uv.Y());
+      }
+    }
+    for (unsigned i=0; i<submesh->IndexCount(); ++i) copy->AddIndex(submesh->Index(i));
+    part.AddSubMesh(std::move(copy));
+    const auto basename = result->directory/"meshes"/("visual_"+std::to_string(mesh.SubMeshCount()));
+    gz::common::ColladaExporter partExporter;
+    partExporter.Export(&part, basename.string(), false);
+    visual.uri = basename.string()+".dae";
+    if (!std::filesystem::is_regular_file(visual.uri)) throw std::runtime_error("Tile primitive export failed");
+    result->visuals.push_back(std::move(visual));
     mesh.AddSubMesh(std::move(submesh));
   });
   // Empty render content is valid in a hierarchy, including some OSM building
@@ -189,6 +224,8 @@ std::shared_ptr<TileMesh> prepareMesh(const CesiumGltf::Model& model,
   gz::common::ColladaExporter exporter;
   exporter.Export(&mesh, (result->directory / "meshes/mesh").string(), false);
   if (!std::filesystem::is_regular_file(result->uri)) throw std::runtime_error("Tile mesh export failed");
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(result->directory))
+    if (entry.is_regular_file()) result->exportedBytes += entry.file_size();
   return result;
 }
 }  // namespace gz_cesium

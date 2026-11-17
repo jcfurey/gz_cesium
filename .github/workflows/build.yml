@@ -1,0 +1,36 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lyrical-jetty:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: lyrical
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build curl zip unzip pkg-config autoconf automake libtool python3-pil \
+            ros-lyrical-ament-cmake ros-lyrical-ament-cmake-gtest \
+            ros-lyrical-gz-sim-vendor ros-lyrical-gz-common-vendor ros-lyrical-gz-plugin-vendor \
+            ros-lyrical-gz-transport-vendor ros-lyrical-gz-msgs-vendor
+      - name: Cache pinned native dependency
+        uses: actions/cache@v5
+        with:
+          path: .deps/cesium
+          key: cesium-native-${{ runner.os }}-${{ runner.arch }}-lyrical-${{ hashFiles('tools/build_cesium_native') }}
+      - name: Configure, build, install and test
+        shell: bash
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          tools/ci
