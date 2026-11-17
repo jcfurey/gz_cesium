@@ -28,7 +28,10 @@ ctest --test-dir build/gz_cesium --output-on-failure
 The helper builds unmodified Apache-2.0 Cesium Native revision
 `55d288611b3dd6e1acf865d030f1e9a792be1514` under `.deps/cesium`, including
 its pinned private vcpkg dependencies. These dependencies are isolated from
-Gazebo's shared libraries. To reuse another build, set
+Gazebo's shared libraries. The x64 Linux triplet pins the compiler baseline
+explicitly; this avoids implicit AVX defaults breaking the pinned KTX encoder's
+SSE-specific translation units on fresh Ubuntu 26.04 runners.
+To reuse another build, set
 `GZ_CESIUM_NATIVE_ROOT` when running the helper and configuring CMake, or pass
 `-DGZ_CESIUM_NATIVE_ROOT=/absolute/dependency/root` to CMake. A package inside
 `fleet_sim_ws/src/gz_cesium` also detects the workspace's `runtime/cesium`
@@ -148,9 +151,10 @@ redact authentication query values and JWTs.
 
 ## Validation and limits
 
-Six C++ mesh tests cover ENU/node/up-axis transforms, portable textures,
+Nine C++ tests cover ENU/node/up-axis transforms, portable textures,
 resource-name isolation, reflected winding, malformed indices, empty tile
-hierarchies and unlit material export. Seven HTTP tests cover separate caches,
+hierarchies, unlit material export, transient GET recovery, permanent failures
+and bounded retry shutdown. Seven HTTP tests cover separate caches,
 warm reuse, corrupt-transfer retries, reconnection, resource restrictions,
 eviction and texture conversion. `tools/ci` builds the pinned dependency and
 configures, builds, installs and tests a fresh package build; the GitHub Actions
@@ -158,7 +162,14 @@ workflow uses Ubuntu 26.04, ROS Lyrical and Gazebo Jetty.
 
 The Caltech fleet passed driving, braking, terrain contact,
 cameras, Ouster metadata/packets/clouds and 3D TF checks with about 416,000
-active triangles. This is a short local validation, not an endurance test.
+active triangles. A separate authored 512 m course exercised all five fleet
+platforms over 318 m each in 350 simulated seconds (354 wall seconds):
+74 tile creations, 60 removals, 80 collected native resources and no preparation
+failures. A 12-second provider outage produced 12 successful retries; a separate
+viewer outage recovered while retaining its last good scene. The viewer used
+6.95 MB of HTTP data, 6,707 cache hits and 120 evictions. Largest-process RSS
+rose from 1,529 to 1,658 MiB and settled near that peak. This finite traversal
+does not establish a hard memory bound or hours-long mission reliability.
 
 The adapter handles triangle glTF content and base-color textures. Materials
 marked `KHR_materials_unlit` use emissive texture maps with zero lit diffuse,
@@ -169,8 +180,15 @@ Raster overlays, Gaussian splats, animation and advanced material extensions
 are not implemented. Photogrammetry can have coarse or missing surfaces under
 foliage and around narrow passages; inspect the source before placing robots.
 
+Transient GET transport errors, HTTP 408/429 and 5xx responses retry up to
+eight attempts, using backoff from 0.5 seconds capped at eight seconds. Other
+HTTP responses and mutation requests are not replayed. Queued retries are
+cancelled on shutdown. Longer outages can exhaust this budget; retained contact
+geometry does not provide coverage in unloaded regions. Status includes
+request/retry/failure counts, native cache bytes and retired/collected resources.
+
 The native cache target does not bound total RSS: pinned contact geometry,
 exported images, physics, sensor mirrors and renderer caches are additional.
-Long traversals and total renderer-cache growth still need testing. Source
+Hours-long traversals and total renderer-cache growth still need testing. Source
 imagery retains its provider terms and is not covered by this package's
 Apache-2.0 license; only the authored fixture is CC0.

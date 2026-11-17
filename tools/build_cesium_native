@@ -28,6 +28,7 @@ export VCPKG_BINARY_SOURCES="clear;files,$cesium_runtime/binary-cache,readwrite"
 cmake -S "$cesium_runtime/native" -B "$cesium_runtime/build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCMAKE_INSTALL_PREFIX="$cesium_runtime/install" \
+  -DVCPKG_OVERLAY_TRIPLETS="$cesium_repository/cmake/triplets" \
   -DCESIUM_TESTS_ENABLED=OFF -DCESIUM_ENABLE_CLANG_TIDY=OFF -DCESIUM_DISABLE_SPZ=ON
 cmake --build "$cesium_runtime/build" --parallel "${1:-8}"
 cmake --install "$cesium_runtime/build"

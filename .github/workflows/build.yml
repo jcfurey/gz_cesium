@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .deps/cesium
-          key: cesium-native-${{ runner.os }}-${{ runner.arch }}-lyrical-${{ hashFiles('tools/build_cesium_native') }}
+          key: cesium-native-${{ runner.os }}-${{ runner.arch }}-lyrical-${{ hashFiles('tools/build_cesium_native', 'cmake/triplets/*') }}
       - name: Configure, build, install and test
         shell: bash
         run: |

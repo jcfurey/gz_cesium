@@ -3,6 +3,7 @@
 #include "gz_cesium/model.hpp"
 #include "gz_cesium/task_pool.hpp"
 #include "gz_cesium/credentials.hpp"
+#include "gz_cesium/retry_accessor.hpp"
 
 #include <Cesium3DTilesSelection/IPrepareRendererResources.h>
 #include <Cesium3DTilesSelection/ITileExcluder.h>
@@ -88,6 +89,7 @@ class Resources final : public cs::IPrepareRendererResources {
   std::filesystem::path directory;
   std::atomic<std::uint64_t> nextId{0};
   std::atomic<unsigned> failures{0};
+  std::uint64_t freed{}, collected{};
   std::shared_ptr<spdlog::logger> logger;
   struct Retired { std::shared_ptr<TileMesh> mesh; Clock::time_point time; };
   std::vector<Retired> retired;
@@ -112,13 +114,14 @@ class Resources final : public cs::IPrepareRendererResources {
   void free(cs::Tile&, void* loaded, void* main) noexcept override {
     for (auto* pointer : {static_cast<Resource*>(loaded), static_cast<Resource*>(main)}) {
       if (pointer) {
+        ++freed;
         retired.push_back({std::move(pointer->mesh), Clock::now()});
         delete pointer;
       }
     }
   }
   void collect() {
-    std::erase_if(retired, [](const Retired& entry) {
+    std::erase_if(retired, [this](const Retired& entry) {
       if (entry.mesh.use_count() != 1 || Clock::now()-entry.time < std::chrono::seconds(5)) return false;
       // Entity deletion and the renderer have had several frames to release
       // this geometry before its URI and the server's CPU cache are retired.
@@ -127,6 +130,7 @@ class Resources final : public cs::IPrepareRendererResources {
         gz::common::MeshManager::Instance()->RemoveMesh(visual.uri.string());
       std::error_code error;
       std::filesystem::remove_all(entry.mesh->directory, error);
+      ++collected;
       return true;
     });
   }
@@ -143,6 +147,7 @@ class CesiumSystem final : public gz::sim::System,
     public gz::sim::ISystemConfigure, public gz::sim::ISystemPreUpdate {
  public:
   ~CesiumSystem() override {
+    if (accessor_) accessor_->stop();
     active_.clear();
     pins_.clear();
     if (!tilesets_.empty()) {
@@ -208,7 +213,7 @@ class CesiumSystem final : public gz::sim::System,
       resources_->ecefToEnu = glm::inverse(enuToEcef_);
       resources_->directory = assetDirectory_;
       resources_->logger = logger;
-      accessor_ = std::make_shared<CesiumCurl::CurlAssetAccessor>();
+      accessor_ = std::make_shared<RetryAccessor>(std::make_shared<CesiumCurl::CurlAssetAccessor>());
       credits_ = std::make_shared<CesiumUtility::CreditSystem>();
       cs::TilesetOptions options;
       range_ = std::make_shared<RangeExcluder>();
@@ -467,6 +472,21 @@ class CesiumSystem final : public gz::sim::System,
     out.Key("stream_radius"); out.Double(range_ ? range_->radius : 0.);
     out.Key("layers"); out.Uint64(tilesets_.size());
     out.Key("preparation_failures"); out.Uint(resources_ ? unsigned(resources_->failures) : 0);
+    out.Key("network_requests"); out.Uint64(accessor_ ? accessor_->requests.load() : 0);
+    out.Key("network_retries"); out.Uint64(accessor_ ? accessor_->retries.load() : 0);
+    out.Key("network_failures"); out.Uint64(accessor_ ? accessor_->failures.load() : 0);
+    out.Key("network_pending"); out.Uint64(accessor_ ? accessor_->pending.load() : 0);
+    std::int64_t nativeBytes=0;
+    std::uint64_t loaded=0;
+    for (const auto& tileset : tilesets_) {
+      nativeBytes += tileset->getTotalDataBytes();
+      loaded += tileset->getNumberOfTilesLoaded();
+    }
+    out.Key("native_cache_bytes"); out.Int64(nativeBytes);
+    out.Key("native_loaded_tiles"); out.Uint64(loaded);
+    out.Key("retired_tiles"); out.Uint64(resources_ ? resources_->freed : 0);
+    out.Key("collected_tiles"); out.Uint64(resources_ ? resources_->collected : 0);
+    out.Key("retained_retired_tiles"); out.Uint64(resources_ ? resources_->retired.size() : 0);
     std::uint64_t triangles=0, textures=0, exported=0, unlit=0;
     for (const auto& [pointer, record] : active_) {
       triangles += record.mesh->triangles.size();
@@ -521,7 +541,7 @@ class CesiumSystem final : public gz::sim::System,
   std::unique_ptr<gz::sim::SdfEntityCreator> creator_;
   std::shared_ptr<TaskPool> pool_;
   std::unique_ptr<CesiumAsync::AsyncSystem> async_;
-  std::shared_ptr<CesiumCurl::CurlAssetAccessor> accessor_;
+  std::shared_ptr<RetryAccessor> accessor_;
   std::shared_ptr<Resources> resources_;
   std::shared_ptr<RangeExcluder> range_;
   std::shared_ptr<CesiumUtility::CreditSystem> credits_;
